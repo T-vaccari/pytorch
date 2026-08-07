@@ -3,7 +3,7 @@
 --------------------------------------------------------------------------------
 
 > [!IMPORTANT]
-> This is an experimental ROCm/HIP PyTorch fork targeting the AMD Radeon RX 5600 XT (`gfx1010`). It is not a supported binary distribution for every AMD GPU.
+> This is an experimental ROCm/HIP PyTorch fork targeting the AMD Radeon RX 5600 XT (`gfx1010`).
 
 ## `gfx1010` ROCm build
 
