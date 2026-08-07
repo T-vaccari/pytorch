@@ -2,6 +2,38 @@
 
 --------------------------------------------------------------------------------
 
+> [!IMPORTANT]
+> This is an experimental ROCm/HIP PyTorch fork targeting the AMD Radeon RX 5600 XT (`gfx1010`). It is not a supported binary distribution for every AMD GPU.
+
+## `gfx1010` ROCm build
+
+The [`gfx1010-rocm`](https://github.com/T-vaccari/pytorch/tree/gfx1010-rocm) branch contains the source adaptations used by the custom local build. It is based on upstream PyTorch commit [`ba56102387ef21a3b04b357e5b183d48f0afefc7`](https://github.com/pytorch/pytorch/commit/ba56102387ef21a3b04b357e5b183d48f0afefc7) and pins the custom [Kineto fork](https://github.com/T-vaccari/kineto) as a submodule.
+
+### Verified working toolchain
+
+| Component | Version / setting |
+| --- | --- |
+| GPU | AMD Radeon RX 5600 XT (`gfx1010`) |
+| Host OS | Ubuntu 22.04 |
+| ROCm/HIP runtime | 7.2.53211 |
+| PyTorch | `2.8.0a0+gitba56102` |
+| Python | 3.10.20 |
+| C++ compiler | GCC 11.4.0 (`/usr/bin/c++`) |
+| CMake | 4.3.2 |
+| Ninja | 1.13.0 |
+| Build type | Release |
+| PyTorch options | `USE_ROCM=ON`, `USE_CUDA=0` |
+
+### Rebuild notes
+
+- Clone this branch with submodules and retain the custom Kineto submodule URL and pinned revision.
+- Build explicitly for `gfx1010` with a ROCm installation that supports it; do not assume a stock ROCm PyTorch wheel will support this GPU.
+- The source revision and toolchain above are the verified baseline. The original shell build invocation was not captured, so record the exact command and environment variables before producing a replacement build.
+
+### Known limitation
+
+On this configuration, GPU `torch.topk` can return corrupt values and indices. Details and the CPU-sampling workaround are tracked in [issue #1](https://github.com/T-vaccari/pytorch/issues/1).
+
 PyTorch is a Python package that provides two high-level features:
 - Tensor computation (like NumPy) with strong GPU acceleration
 - Deep neural networks built on a tape-based autograd system
