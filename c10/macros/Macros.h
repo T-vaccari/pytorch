@@ -312,7 +312,7 @@ constexpr uint32_t CUDA_THREADS_PER_BLOCK_FALLBACK = 256;
 #endif
 
 #if defined(USE_ROCM)
-#define C10_WARP_SIZE warpSize // = 64 or 32 (Defined in hip_runtime.h)
+#define C10_WARP_SIZE 32 // gfx1010 local build: ROCm 7 host constexpr workaround
 #else
 #define C10_WARP_SIZE 32
 #endif

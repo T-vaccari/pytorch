@@ -5,8 +5,8 @@
 #include <c10/util/Enumerate.h>
 
 #ifdef __SIGRID_USE_GPU__
-#include <ATen/cuda/CUDAContext.h>
-#include <ATen/cuda/Exceptions.h>
+#include <ATen/hip/HIPContext.h>
+#include <ATen/hip/Exceptions.h>
 #endif
 
 namespace torch::nativert {

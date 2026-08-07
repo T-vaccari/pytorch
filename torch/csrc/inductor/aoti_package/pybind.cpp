@@ -2,7 +2,7 @@
 #include <torch/csrc/inductor/aoti_package/pybind.h>
 #include <torch/csrc/inductor/aoti_runner/model_container_runner.h>
 #include <torch/csrc/inductor/aoti_runner/model_container_runner_cpu.h>
-#ifdef USE_CUDA
+#ifdef USE_ROCM
 #include <torch/csrc/inductor/aoti_runner/model_container_runner_cuda.h>
 #endif
 

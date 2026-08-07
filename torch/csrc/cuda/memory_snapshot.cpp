@@ -1,6 +1,6 @@
 #include <ATen/Context.h>
 #include <ATen/record_function.h>
-#include <c10/cuda/CUDACachingAllocator.h>
+#include <ATen/hip/impl/HIPCachingAllocatorMasqueradingAsCUDA.h>
 #include <torch/csrc/cuda/memory_snapshot.h>
 #include <torch/csrc/jit/runtime/interpreter.h>
 #include <torch/csrc/jit/serialization/pickler.h>
@@ -12,7 +12,7 @@ using c10::Dict;
 using c10::IValue;
 using torch::jit::Pickler;
 
-using c10::cuda::CUDACachingAllocator::SegmentInfo;
+using c10::hip::HIPCachingAllocator::SegmentInfo;
 
 namespace {
 
@@ -137,12 +137,12 @@ at::CallbackHandle _initRecordAnnotations(bool useGlobalCallback) {
       at::RecordFunctionCallback(
           [](const at::RecordFunction& fn)
               -> std::unique_ptr<at::ObserverContext> {
-            c10::cuda::CUDACachingAllocator::recordAnnotation(
+            c10::hip::HIPCachingAllocator::recordAnnotation(
                 {{"name", fn.name()}, {"stage", "START"}});
             return nullptr;
           },
           [](const at::RecordFunction& fn, at::ObserverContext* ctx_ptr) {
-            c10::cuda::CUDACachingAllocator::recordAnnotation(
+            c10::hip::HIPCachingAllocator::recordAnnotation(
                 {{"name", fn.name()}, {"stage", "END"}});
           })
           .scopes({at::RecordScope::USER_SCOPE}));
@@ -157,7 +157,7 @@ at::CallbackHandle _initCompileContexts() {
             const std::string functionNamePrefix = "Torch-Compiled Region";
             if (functionName.compare(
                     0, functionNamePrefix.size(), functionNamePrefix) == 0) {
-              c10::cuda::CUDACachingAllocator::pushCompileContext(functionName);
+              c10::hip::HIPCachingAllocator::pushCompileContext(functionName);
             }
             return nullptr;
           },
@@ -166,7 +166,7 @@ at::CallbackHandle _initCompileContexts() {
             const std::string functionNamePrefix = "Torch-Compiled Region";
             if (functionName.compare(
                     0, functionNamePrefix.size(), functionNamePrefix) == 0) {
-              c10::cuda::CUDACachingAllocator::popCompileContext();
+              c10::hip::HIPCachingAllocator::popCompileContext();
             }
           })
           .scopes({at::RecordScope::FUNCTION}));
@@ -209,23 +209,23 @@ void _record_memory_history(
     bool clearHistory,
     bool compileContext,
     bool globalRecordAnnotations) {
-  c10::cuda::CUDACachingAllocator::CreateContextFn recorder = gather;
+  c10::hip::HIPCachingAllocator::CreateContextFn recorder = gather;
   if (enabled && record_cpp_context &&
       (trace_alloc_record_context || record_context)) {
     recorder = gather_with_cpp;
     // warm up C++ stack unwinding
     unwind::unwind();
   }
-  auto when = c10::cuda::CUDACachingAllocator::RecordContext::NEVER;
+  auto when = c10::hip::HIPCachingAllocator::RecordContext::NEVER;
   if (trace_alloc_record_context) {
-    when = c10::cuda::CUDACachingAllocator::RecordContext::ALLOC;
+    when = c10::hip::HIPCachingAllocator::RecordContext::ALLOC;
   } else if (record_context) {
-    when = c10::cuda::CUDACachingAllocator::RecordContext::STATE;
+    when = c10::hip::HIPCachingAllocator::RecordContext::STATE;
   }
   at::globalContext().lazyInitDevice(c10::DeviceType::CUDA);
 
   setRecordFunctionCallbacks(enabled, compileContext, globalRecordAnnotations);
-  c10::cuda::CUDACachingAllocator::recordHistory(
+  c10::hip::HIPCachingAllocator::recordHistory(
       enabled, recorder, trace_alloc_max_entries, when, clearHistory);
 }
 
@@ -260,27 +260,27 @@ void _record_memory_history(
   checkOptionIn(
       stacks, {"python", "all"}, "expected stacks to be 'python', or 'all'");
 
-  c10::cuda::CUDACachingAllocator::CreateContextFn recorder = gather;
+  c10::hip::HIPCachingAllocator::CreateContextFn recorder = gather;
   if (enabled && context && stacks == "all") {
     recorder = gather_with_cpp;
     // warm up C++ stack unwinding
     unwind::unwind();
   }
   max_entries = (enabled && *enabled == "all") ? max_entries : 1;
-  auto when = c10::cuda::CUDACachingAllocator::RecordContext::NEVER;
+  auto when = c10::hip::HIPCachingAllocator::RecordContext::NEVER;
   if (context) {
     if (context == "all") {
-      when = c10::cuda::CUDACachingAllocator::RecordContext::ALL;
+      when = c10::hip::HIPCachingAllocator::RecordContext::ALL;
     } else if (context == "alloc") {
-      when = c10::cuda::CUDACachingAllocator::RecordContext::ALLOC;
+      when = c10::hip::HIPCachingAllocator::RecordContext::ALLOC;
     } else if (context == "state") {
-      when = c10::cuda::CUDACachingAllocator::RecordContext::STATE;
+      when = c10::hip::HIPCachingAllocator::RecordContext::STATE;
     }
   }
   at::globalContext().lazyInitDevice(c10::DeviceType::CUDA);
   setRecordFunctionCallbacks(
       enabled.has_value(), compileContext, globalRecordAnnotations);
-  c10::cuda::CUDACachingAllocator::recordHistory(
+  c10::hip::HIPCachingAllocator::recordHistory(
       enabled.has_value(), recorder, max_entries, when, clearHistory);
 }
 
@@ -370,7 +370,7 @@ std::string _memory_snapshot_pickled() {
     return segmentDict;
   };
 
-  auto snapshot = c10::cuda::CUDACachingAllocator::snapshot();
+  auto snapshot = c10::hip::HIPCachingAllocator::snapshot();
 
   auto segments = new_list();
   for (const auto& segmentInfo : snapshot.segments) {
@@ -390,7 +390,7 @@ std::string _memory_snapshot_pickled() {
   IValue oom_s = "oom";
   IValue device_free_s = "device_free";
 
-  using namespace c10::cuda::CUDACachingAllocator;
+  using namespace c10::hip::HIPCachingAllocator;
 
   auto action_to_str = [&](TraceEntry::Action action) {
     switch (action) {
@@ -456,7 +456,7 @@ std::string _memory_snapshot_pickled() {
   IValue expandable_segments_s = "expandable_segments";
   IValue pinned_num_register_threads_s = "pinned_num_register_threads";
   IValue release_lock_on_malloc_s = "release_lock_on_cudamalloc";
-  IValue pinned_use_host_register_s = "pinned_use_cuda_host_register";
+  IValue pinned_use_host_register_s = "pinned_use_hip_host_register";
   IValue roundup_power2_divisions_s = "roundup_power2_divisions";
 
   allocator_settings.insert(

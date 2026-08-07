@@ -475,12 +475,12 @@ class AOTInductorModelContainer {
       queue_ptr
           ->memcpy(internal_constants_ptr, user_constant_ptr, constant_size)
           .wait();
-#elif USE_CUDA
-      AOTI_RUNTIME_DEVICE_CHECK(cudaMemcpy(
+#elif USE_ROCM
+      AOTI_RUNTIME_DEVICE_CHECK(hipMemcpy(
           internal_constants_ptr,
           user_constant_ptr,
           constant_size,
-          cudaMemcpyDefault));
+          hipMemcpyDefault));
 #else
       memcpy(internal_constants_ptr, user_constant_ptr, constant_size);
 #endif
@@ -666,11 +666,11 @@ class AOTInductorModelContainer {
   std::shared_mutex model_exec_mutex_;
 
   RAIIDataPtr allocate_constant_blob() {
-#if defined(USE_CUDA) || defined(USE_XPU) || defined(USE_MPS)
+#if defined(USE_ROCM) || defined(USE_XPU) || defined(USE_MPS)
     return RAII_gpuMalloc(blob_size_);
 #else
     return RAII_cpuMalloc(blob_size_);
-#endif // USE_CUDA
+#endif // USE_ROCM
   }
 
   void* get_constant_blob_ptr(bool get_inactive) {

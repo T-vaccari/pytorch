@@ -5,9 +5,9 @@
 #include <torch/csrc/distributed/c10d/symm_mem/SymmetricMemory.hpp>
 
 #include <ATen/ceil_div.h>
-#include <ATen/cuda/CUDAContext.h>
-#include <c10/cuda/CUDACachingAllocator.h>
-#include <c10/cuda/CUDAGuard.h>
+#include <ATen/hip/HIPContext.h>
+#include <ATen/hip/impl/HIPCachingAllocatorMasqueradingAsCUDA.h>
+#include <ATen/hip/impl/HIPGuardImplMasqueradingAsCUDA.h>
 #include <c10/util/error.h>
 #include <utility>
 
@@ -33,7 +33,7 @@ struct NVSHMEMAllocation {
     if (is_finalizing()) {
       return;
     }
-    c10::cuda::CUDAGuard guard(device_idx);
+    c10::hip::HIPGuardMasqueradingAsCUDA guard(device_idx);
     nvshmem_free(ptr);  // nvshmem_free has no return value
   }
 };
@@ -49,7 +49,7 @@ class NVSHMEMSymmetricMemory : public SymmetricMemory {
         group_name_(group_name) {
     // For logging only
     static int exchanged_n_times = 0;
-    c10::cuda::CUDAGuard guard(device_idx_);
+    c10::hip::HIPGuardMasqueradingAsCUDA guard(device_idx_);
 
     auto global_rank = get_group_info("0").rank;
     GroupInfo& group_info = get_group_info(group_name_);
@@ -78,7 +78,7 @@ class NVSHMEMSymmetricMemory : public SymmetricMemory {
 
     // TODO: use the same allocation for signal pad
     void* signal_pad_ptr = nvshmem_malloc(signal_pad_size);
-    AT_CUDA_CHECK(cudaMemset(signal_pad_ptr, 0, signal_pad_size));
+    AT_CUDA_CHECK(hipMemset(signal_pad_ptr, 0, signal_pad_size));
 
     for (int r = 0; r < world_size_; ++r) {
       signal_pads_.push_back(nvshmem_ptr(
@@ -87,25 +87,25 @@ class NVSHMEMSymmetricMemory : public SymmetricMemory {
 
     const size_t arr_size = sizeof(void*) * world_size_;
     buffers_dev_ = reinterpret_cast<void**>(
-        c10::cuda::CUDACachingAllocator::raw_alloc(arr_size));
+        c10::hip::HIPCachingAllocator::raw_alloc(arr_size));
     signal_pads_dev_ = reinterpret_cast<void**>(
-        c10::cuda::CUDACachingAllocator::raw_alloc(arr_size));
+        c10::hip::HIPCachingAllocator::raw_alloc(arr_size));
 
-    AT_CUDA_CHECK(cudaMemcpy(
-        buffers_dev_, buffers_.data(), arr_size, cudaMemcpyHostToDevice));
-    AT_CUDA_CHECK(cudaMemcpy(
+    AT_CUDA_CHECK(hipMemcpy(
+        buffers_dev_, buffers_.data(), arr_size, hipMemcpyHostToDevice));
+    AT_CUDA_CHECK(hipMemcpy(
         signal_pads_dev_,
         signal_pads_.data(),
         arr_size,
-        cudaMemcpyHostToDevice));
+        hipMemcpyHostToDevice));
 
     rank_to_global_rank_dev_ = reinterpret_cast<int*>(
-        c10::cuda::CUDACachingAllocator::raw_alloc(sizeof(int) * world_size_));
-    AT_CUDA_CHECK(cudaMemcpy(
+        c10::hip::HIPCachingAllocator::raw_alloc(sizeof(int) * world_size_));
+    AT_CUDA_CHECK(hipMemcpy(
         rank_to_global_rank_dev_,
         rank_to_global_rank_.data(),
         sizeof(int) * world_size_,
-        cudaMemcpyHostToDevice));
+        hipMemcpyHostToDevice));
   }
 
   ~NVSHMEMSymmetricMemory() override{

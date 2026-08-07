@@ -1,5 +1,6 @@
+#include "hip/hip_runtime.h"
 #include <dlfcn.h>
-#include <c10/cuda/CUDAGuard.h>
+#include <ATen/hip/impl/HIPGuardImplMasqueradingAsCUDA.h>
 
 #include <torch/csrc/distributed/c10d/symm_mem/nvshmem_extension.cuh>
 #include <torch/csrc/distributed/c10d/symm_mem/CUDASymmetricMemory-inl.h>
@@ -7,8 +8,8 @@
 #include <torch/csrc/distributed/c10d/symm_mem/SymmetricMemory.hpp>
 
 #include <cuda_awbarrier_primitives.h>
-// Use torch's cub wrapper instead of CUDA's <cub/cub.cuh>, see #55292
-#include <ATen/cuda/cub.cuh>
+// Use torch's cub wrapper instead of CUDA's <hipcub/hipcub.hpp>, see #55292
+#include <ATen/hip/cub.cuh>
 #include <nvshmem.h>
 
 namespace c10d::nvshmem_extension {
@@ -101,10 +102,10 @@ void initialize_nvshmem_with_store(
   LOG(INFO) << "NVSHMEM is available, version: " << major << "." << minor;
 }
 
-// Initializes the device state in CUmodule so that it’s able to perform NVSHMEM
+// Initializes the device state in hipModule_t so that it’s able to perform NVSHMEM
 // operations.
 void nvshmemx_cumodule_init(uintptr_t module) {
-  auto cumodule = reinterpret_cast<CUmodule>(module);
+  auto cumodule = reinterpret_cast<hipModule_t>(module);
   TORCH_CHECK(
     ::nvshmemx_cumodule_init(cumodule) == 0,
     "nvshmemx_cumodule_init failed");
@@ -147,7 +148,7 @@ at::Tensor nvshmem_broadcast(at::Tensor& input, const std::string& group_name) {
   auto team = group_to_team(group_name, input_hdl->get_rank_to_global_rank());
   void* buffer_ptr = input_hdl->get_buffer_ptrs()[rank];
 
-  auto stream = at::cuda::getCurrentCUDAStream();
+  auto stream = at::hip::getCurrentHIPStreamMasqueradingAsCUDA();
   nvshmemx_broadcastmem_on_stream(team, buffer_ptr, buffer_ptr, input_hdl->get_buffer_size(), 0, stream);
   return input;
 }
@@ -162,8 +163,8 @@ void nvshmem_put(at::Tensor& tensor, int64_t peer) {
   void* buffer_ptr = hdl->get_buffer_ptrs()[rank];
   auto buffer_size = tensor.numel() * tensor.element_size();
 
-  c10::cuda::CUDAGuard guard(tensor.device());
-  auto stream = at::cuda::getCurrentCUDAStream();
+  c10::hip::HIPGuardMasqueradingAsCUDA guard(tensor.device());
+  auto stream = at::hip::getCurrentHIPStreamMasqueradingAsCUDA();
   nvshmemx_putmem_on_stream(buffer_ptr, tensor.data_ptr(), buffer_size, peer, stream);
 }
 
@@ -181,7 +182,7 @@ at::Tensor nvshmem_all_to_all(
   void* output_ptr = out_hdl->get_buffer_ptrs()[rank];
   size_t bytes_per_rank = input_hdl->get_buffer_size() / world_size;
 
-  auto stream = at::cuda::getCurrentCUDAStream(input.device().index());
+  auto stream = at::hip::getCurrentHIPStreamMasqueradingAsCUDA(input.device().index());
   nvshmemx_alltoallmem_on_stream(team, output_ptr, input_ptr, bytes_per_rank, stream);
   return out;
 }
@@ -192,7 +193,7 @@ __device__ int64_t prefixSum(int64_t *odata, int64_t *idata, int n) {
   // - `BLOCK_SCAN_WARP_SCANS` is a low-latency scan algorithm (instead of high
   // throughput which we don't need here).
   // - `at_cuda_detail::cub` is torch's cub wrapper, see #55292.
-  using BlockScanT = at_cuda_detail::cub::BlockScan<int64_t, THREADS_PER_BLOCK, at_cuda_detail::cub::BLOCK_SCAN_WARP_SCANS>;
+  using BlockScanT = at_cuda_detail::hipcub::BlockScan<int64_t, THREADS_PER_BLOCK, at_cuda_detail::hipcub::BLOCK_SCAN_WARP_SCANS>;
   // Allocate shared memory for BlockScan
   __shared__ typename BlockScanT::TempStorage temp_storage;
 
@@ -304,7 +305,7 @@ at::Tensor all_to_all_vdev(
   void* output_ptr = out_hdl->get_buffer_ptrs()[rank];
   int64_t* splits_ptr = (int64_t*)(splits_hdl->get_buffer_ptrs()[rank]);
 
-  auto stream = at::cuda::getCurrentCUDAStream(input.device().index());
+  auto stream = at::hip::getCurrentHIPStreamMasqueradingAsCUDA(input.device().index());
 
   // Exchange output splits and source offsets
   // Use collective launch because kernel involves nvshmem barrier
@@ -341,7 +342,7 @@ at::Tensor all_to_all_vdev(
   // TODO: better intra vs inter detection, currently it is based on world_size.
   int max_inter_node_blocks = world_size <= 16 ? 16 : 8;
   if (world_size > 8) {
-    num_blocks = std::min(num_blocks, max_inter_node_blocks);
+    num_blocks = ::min(num_blocks, max_inter_node_blocks);
   }
 
   // Stride at dim 0 (assuming input is contiguous, TODO)
@@ -599,8 +600,8 @@ at::Tensor all_to_all_vdev_2d(
   TORCH_CHECK(ne <= NUM_TILES, "Number of experts must be smaller than NUM_TILES", NUM_TILES);
 
   // Set device context for getting the stream and launching kernels below
-  c10::cuda::CUDAGuard guard(input.device());
-  auto stream = at::cuda::getCurrentCUDAStream();
+  c10::hip::HIPGuardMasqueradingAsCUDA guard(input.device());
+  auto stream = at::hip::getCurrentHIPStreamMasqueradingAsCUDA();
 
   // Exchange output splits and source offsets
   auto input_dim0 = input.size(0);
@@ -622,7 +623,7 @@ at::Tensor all_to_all_vdev_2d(
   // CTA Tuning
   // Naive for now, use 1 block per expert.
   // Total number of blocks is limited to 64 (intra-node) or 8 (inter-node).
-  int num_blocks = std::min(world_size * ne, world_size > 8 ? 8 : 64);
+  int num_blocks = ::min(world_size * ne, world_size > 8 ? 8 : 64);
 
   // Stride at dim 0
   size_t stride_bytes = input.stride(0) * input.element_size();

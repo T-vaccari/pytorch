@@ -837,9 +837,7 @@ void bgemm_internal<at::BFloat16>(CUDABLAS_BGEMM_ARGTYPES(at::BFloat16))
     }
   }
 #if defined(USE_ROCM) && !defined(_MSC_VER)
-  else if (at::globalContext().blasPreferredBackend() == BlasBackend::Ck) {
-    at::native::bgemm_internal_ck<at::BFloat16>(CUDABLAS_BGEMM_ARGS(at::BFloat16));
-  }
+  /* gfx1010 local build: CK BF16 BGEMM kernels are excluded; fall back to hipBLAS. */
 #endif
   else {
     bgemm_internal_cublas<at::BFloat16>(CUDABLAS_BGEMM_ARGS(at::BFloat16));
@@ -1278,9 +1276,7 @@ void gemm_internal<double>(CUDABLAS_GEMM_ARGTYPES(double))
 #endif
   }
 #if defined(USE_ROCM) && !defined(_MSC_VER)
-  else if (at::globalContext().blasPreferredBackend() == BlasBackend::Ck) {
-    at::native::gemm_internal_ck<double>(CUDABLAS_GEMM_ARGS(double));
-  }
+  /* gfx1010 local build: CK disabled; fall back to hipBLAS. */
 #endif
   else {
     gemm_internal_cublas<double>(CUDABLAS_GEMM_ARGS(double));
@@ -1294,13 +1290,7 @@ void gemm_internal<float>(CUDABLAS_GEMM_ARGTYPES(float))
     gemm_internal_cublaslt<float>(CUDABLAS_GEMM_ARGS(float));
   }
 #if defined(USE_ROCM) && !defined(_MSC_VER)
-  else if (at::globalContext().blasPreferredBackend() == BlasBackend::Ck) {
-    if (at::detail::getCUDAHooks().isGPUArch({"gfx1100"})) { //no CK GEMM version for gfx1100
-      gemm_internal_cublaslt<float>(CUDABLAS_GEMM_ARGS(float));
-    } else{
-      at::native::gemm_internal_ck<float>(CUDABLAS_GEMM_ARGS(float));
-    }
-  }
+  /* gfx1010 local build: CK disabled; fall back to hipBLAS. */
 #endif
   else {
     gemm_internal_cublas<float>(CUDABLAS_GEMM_ARGS(float));
@@ -1346,9 +1336,7 @@ void gemm_internal<at::Half>(CUDABLAS_GEMM_ARGTYPES(at::Half))
     gemm_internal_cublaslt<at::Half>(CUDABLAS_GEMM_ARGS(at::Half));
   }
 #if defined(USE_ROCM) && !defined(_MSC_VER)
-  else if (at::globalContext().blasPreferredBackend() == BlasBackend::Ck) {
-    at::native::gemm_internal_ck<at::Half>(CUDABLAS_GEMM_ARGS(at::Half));
-  }
+  /* gfx1010 local build: CK disabled; fall back to hipBLAS. */
 #endif
   else {
     gemm_internal_cublas<at::Half>(CUDABLAS_GEMM_ARGS(at::Half));
@@ -1362,9 +1350,7 @@ void gemm_internal<at::BFloat16>(CUDABLAS_GEMM_ARGTYPES(at::BFloat16))
     gemm_internal_cublaslt<at::BFloat16>(CUDABLAS_GEMM_ARGS(at::BFloat16));
   }
 #if defined(USE_ROCM) && !defined(_MSC_VER)
-  else if (at::globalContext().blasPreferredBackend() == BlasBackend::Ck) {
-    at::native::gemm_internal_ck<at::BFloat16>(CUDABLAS_GEMM_ARGS(at::BFloat16));
-  }
+  /* gfx1010 local build: CK disabled; fall back to hipBLAS. */
 #endif
   else {
     gemm_internal_cublas<at::BFloat16>(CUDABLAS_GEMM_ARGS(at::BFloat16));

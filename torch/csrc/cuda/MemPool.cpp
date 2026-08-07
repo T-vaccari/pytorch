@@ -4,7 +4,7 @@
 #include <torch/csrc/utils/device_lazy_init.h>
 #include <torch/csrc/utils/pybind.h>
 
-#include <c10/cuda/CUDACachingAllocator.h>
+#include <ATen/hip/impl/HIPCachingAllocatorMasqueradingAsCUDA.h>
 
 template <typename T>
 using shared_ptr_class_ = py::class_<T, std::shared_ptr<T>>;
@@ -12,19 +12,19 @@ using shared_ptr_class_ = py::class_<T, std::shared_ptr<T>>;
 // NOLINTNEXTLINE(misc-use-internal-linkage)
 void THCPMemPool_init(PyObject* module) {
   auto torch_C_m = py::handle(module).cast<py::module>();
-  shared_ptr_class_<::c10::cuda::MemPool>(torch_C_m, "_MemPool")
+  shared_ptr_class_<::c10::hip::MemPool>(torch_C_m, "_MemPool")
       .def(
-          py::init([](c10::cuda::CUDACachingAllocator::CUDAAllocator* allocator,
+          py::init([](c10::hip::HIPCachingAllocator::HIPAllocator* allocator,
                       bool is_user_created,
                       bool use_on_oom,
                       bool symmetric) {
             torch::utils::device_lazy_init(at::kCUDA);
-            return std::make_shared<::c10::cuda::MemPool>(
+            return std::make_shared<::c10::hip::MemPool>(
                 allocator, is_user_created, use_on_oom, symmetric);
           }))
-      .def_property_readonly("id", &::c10::cuda::MemPool::id)
+      .def_property_readonly("id", &::c10::hip::MemPool::id)
       .def_property_readonly(
-          "is_symmetric", &::c10::cuda::MemPool::is_symmetric)
-      .def_property_readonly("allocator", &::c10::cuda::MemPool::allocator)
-      .def("use_count", &::c10::cuda::MemPool::use_count);
+          "is_symmetric", &::c10::hip::MemPool::is_symmetric)
+      .def_property_readonly("allocator", &::c10::hip::MemPool::allocator)
+      .def("use_count", &::c10::hip::MemPool::use_count);
 }

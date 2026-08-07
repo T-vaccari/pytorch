@@ -230,8 +230,8 @@ void map_block(
     size_t size,
     int device_idx) {
 #if !defined(USE_ROCM) && defined(PYTORCH_C10_DRIVER_API_SUPPORTED)
-  auto driver_api = c10::cuda::DriverAPI::get();
-  auto dev_ptr = reinterpret_cast<CUdeviceptr*>(ptr);
+  auto driver_api = c10::hip::DriverAPI::get();
+  auto dev_ptr = reinterpret_cast<hipDeviceptr_t*>(ptr);
   // Allocate virtual address space
   C10_CUDA_DRIVER_CHECK(
       driver_api->cuMemAddressReserve_(dev_ptr, size, 0ULL, 0, 0ULL));

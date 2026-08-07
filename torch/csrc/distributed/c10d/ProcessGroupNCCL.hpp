@@ -27,13 +27,13 @@
 #include <torch/csrc/distributed/c10d/symm_mem/intra_node_comm.hpp>
 
 #include <ATen/DynamicLibrary.h>
-#include <ATen/cuda/CUDAContext.h>
-#include <ATen/cuda/CUDAEvent.h>
+#include <ATen/hip/HIPContext.h>
+#include <ATen/hip/HIPEvent.h>
 #include <c10/core/Stream.h>
 #include <c10/core/StreamGuard.h>
-#include <c10/cuda/CUDACachingAllocator.h>
-#include <c10/cuda/CUDAGuard.h>
-#include <c10/cuda/CUDAStream.h>
+#include <ATen/hip/impl/HIPCachingAllocatorMasqueradingAsCUDA.h>
+#include <ATen/hip/impl/HIPGuardImplMasqueradingAsCUDA.h>
+#include <ATen/hip/impl/HIPStreamMasqueradingAsCUDA.h>
 
 #include <torch/custom_class.h>
 
@@ -79,7 +79,7 @@ static std::vector<std::string> TORCH_NCCL_DESYNC_DEBUG = {
 // compute accurate collective timing per-collective. (Note: end-events are
 // recorded by default. Turn on this flag can increase chances of a watchdog
 // hang due to performing a CUDA event query which eventually calls
-// cudaEventElapsedTime() API.
+// hipEventElapsedTime() API.
 static std::vector<std::string> TORCH_NCCL_ENABLE_TIMING = {
     "TORCH_NCCL_ENABLE_TIMING",
     "NCCL_ENABLE_TIMING"};
@@ -992,11 +992,11 @@ class TORCH_API ProcessGroupNCCL : public Backend {
 
   // Performs NCCL user buffer registration for all buffers in
   // the given MemPool
-  void registerMemPool(c10::cuda::MemPool* pool);
+  void registerMemPool(c10::hip::MemPool* pool);
 
   // Performs NCCL user buffer de-registration for all buffers in
   // the given MemPool
-  void deregisterMemPool(c10::cuda::MemPool* pool);
+  void deregisterMemPool(c10::hip::MemPool* pool);
 
   // This method adds a temporary extension for the timeout period,
   // applying to all collectives between the calling of this API and
@@ -1086,8 +1086,8 @@ class TORCH_API ProcessGroupNCCL : public Backend {
   // primitives.  The callbacks have the following signatures:
   //
   //    ncclResult_t fn(at::Tensor& input, at::Tensor& output,
-  //                    ncclComm_t, at::cuda::CUDAStream&);
-  //    void {pre,post}(std::vector<at::cuda::CUDAStream&>);
+  //                    ncclComm_t, at::hip::HIPStreamMasqueradingAsCUDA&);
+  //    void {pre,post}(std::vector<at::hip::HIPStreamMasqueradingAsCUDA&>);
   template <typename Fn>
   c10::intrusive_ptr<Work> collective(
       at::Tensor& input,
@@ -1348,7 +1348,7 @@ class TORCH_API ProcessGroupNCCL : public Backend {
   void workEnqueue(const c10::intrusive_ptr<ProcessGroupNCCL::WorkNCCL>&);
 
   // The CUDA streams used by NCCL kernels
-  std::unordered_map<std::string, at::cuda::CUDAStream> ncclStreams_;
+  std::unordered_map<std::string, at::hip::HIPStreamMasqueradingAsCUDA> ncclStreams_;
 
   // The CUDA events used to sync NCCL streams
   std::unordered_map<std::string, at::cuda::CUDAEvent> ncclEvents_;
@@ -1446,7 +1446,7 @@ class TORCH_API ProcessGroupNCCL : public Backend {
   std::optional<bool> useNonblocking_{std::nullopt};
 
   // Communication-optimized memory pool associated with this PG
-  std::unique_ptr<c10::cuda::MemPool> memPool_ = nullptr;
+  std::unique_ptr<c10::hip::MemPool> memPool_ = nullptr;
 };
 
 // Dumps the NCCL comm traces and additional information about the Process
