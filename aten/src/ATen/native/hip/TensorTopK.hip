@@ -763,6 +763,9 @@ void launch(
 bool should_use_multiblock(int64_t num_slices, int64_t slice_size) {
   if (num_slices > std::numeric_limits<uint32_t>::max() ||
       slice_size > std::numeric_limits<uint32_t>::max()) return false;
+#if defined(USE_ROCM)
+  return false;
+#else
 #if CUB_SUPPORTS_SCAN_BY_KEY()
   // This heuristics is based on the experiment in https://github.com/pytorch/pytorch/pull/74267
   return (num_slices <= 20 && slice_size >= 20000) ||
@@ -777,6 +780,7 @@ bool should_use_multiblock(int64_t num_slices, int64_t slice_size) {
   return (num_slices <= 400 && slice_size >= 5000) ||
       (num_slices > 400 && num_slices < 4000 && slice_size >= 1000) ||
       (num_slices >= 4000 && slice_size >= 300);
+#endif
 #endif
 }
 

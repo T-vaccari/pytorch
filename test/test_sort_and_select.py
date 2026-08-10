@@ -818,6 +818,15 @@ class TestSortAndSelect(TestCase):
                 self.assertEqual(top1, top2)
                 self.assertEqual(idx1, idx2)
 
+    @onlyCUDA
+    def test_topk_multiblock_multibatch(self, device):
+        for batch_size in (2, 5):
+            input = torch.randn(batch_size, 50257, device=device)
+            values, indices = input.topk(50, dim=-1)
+            expected_values, expected_indices = input.cpu().topk(50, dim=-1)
+            self.assertEqual(values.cpu(), expected_values)
+            self.assertEqual(indices.cpu(), expected_indices)
+
     def _test_topk_dtype(self, device, dtype, integral, size):
         if integral:
             a = torch.randint(
