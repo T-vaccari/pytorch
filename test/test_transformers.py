@@ -3076,6 +3076,46 @@ class TestSDPACudaOnly(NNTestCase):
             atol = 9e-4 if dtype == torch.float16 else 9e-3
         self.assertEqual(qkv.grad, qkv_lp.grad.to(torch.float64), atol=atol, rtol=rtol)
 
+    @onlyCUDA
+    @parametrize("batch_size", [1, 2])
+    def test_gfx1010_aotriton_flash_gpt2_shape(self, device, batch_size: int):
+        if not TEST_WITH_ROCM or "gfx1010" not in torch.cuda.get_device_properties(device).gcnArchName:
+            self.skipTest("gfx1010 ROCm only")
+
+        if batch_size > 1:
+            torch.cuda.empty_cache()
+
+        shape = (batch_size, 12, 1024, 64)
+        q = torch.randn(shape, device=device, dtype=torch.float16)
+        k = torch.randn_like(q)
+        v = torch.randn_like(q)
+        grad = torch.randn_like(q)
+
+        def run(backend):
+            q_ = q.detach().clone().requires_grad_(True)
+            k_ = k.detach().clone().requires_grad_(True)
+            v_ = v.detach().clone().requires_grad_(True)
+            with sdpa_kernel(backends=[backend]):
+                output = F.scaled_dot_product_attention(q_, k_, v_, dropout_p=0.0, is_causal=True)
+            output.backward(grad)
+            return output, (q_.grad, k_.grad, v_.grad)
+
+        previous_backend = torch.backends.cuda.preferred_rocm_fa_library()
+        try:
+            torch.backends.cuda.preferred_rocm_fa_library("aotriton")
+            self.assertEqual(
+                torch._fused_sdp_choice(q, k, v, dropout_p=0.0, is_causal=True),
+                SDPBackend.FLASH_ATTENTION.value,
+            )
+            flash_output, flash_grads = run(SDPBackend.FLASH_ATTENTION)
+        finally:
+            torch.backends.cuda.preferred_rocm_fa_library(previous_backend)
+
+        math_output, math_grads = run(SDPBackend.MATH)
+        self.assertEqual(flash_output, math_output, atol=2e-2, rtol=2e-2)
+        for flash_grad, math_grad in zip(flash_grads, math_grads):
+            self.assertEqual(flash_grad, math_grad, atol=2e-2, rtol=2e-2)
+
     @unittest.skipIf(not PLATFORM_SUPPORTS_FUSED_ATTENTION, "Platform does not support fused SDPA")
     @parametrize("type", ["dense", "nested"])
     def test_fused_sdp_choice(self, device, type: str):
