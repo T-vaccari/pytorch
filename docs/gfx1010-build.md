@@ -84,6 +84,26 @@ source imports `triton.compiler.compiler.triton_key`, which is available in the
 PyTorch CI-pinned Triton 3.4.0 but absent from 3.5.1. A clean isolated test with
 Triton 3.4.0 compiled and ran a CUDA/HIP tensor function, including backward.
 
+The dependency pin was then validated in a clone of `ml`, not in the active
+environment:
+
+```bash
+conda create -n ml-gfx1010-candidate --clone ml -y
+conda run -n ml-gfx1010-candidate python -m pip install \\
+  --no-deps --force-reinstall triton==3.4.0
+```
+
+With that candidate, a `torch.compile` HIP smoke test consisting of matrix
+multiplication, LayerNorm, a scalar loss, and backward completed successfully.
+The same smoke test also passed when Triton 3.4.0 was supplied only through an
+isolated `PYTHONPATH` probe.
+
+Triton 3.5.1 is not a compatible replacement. Its `triton_key` symbol moved to
+`triton.runtime.cache`; restoring that symbol in memory gets past the original
+import error but compilation then fails with `TypeError: cannot pickle
+_thread.RLock object`. Do not paper over the import locally: pin 3.4.0 until
+the fork is upgraded and validated against the newer Triton ABI.
+
 Do not replace Triton in `ml` while validating builds. A final candidate
 environment must pin `triton==3.4.0` (or the exact commit in
 `.ci/docker/ci_commit_pins/triton.txt`) and re-run the compile smoke test.
