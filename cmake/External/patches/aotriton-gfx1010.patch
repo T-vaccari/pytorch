@@ -1,0 +1,91 @@
+diff --git a/include/aotriton/util.h b/include/aotriton/util.h
+index 38b79cd..91c81c2 100644
+--- a/include/aotriton/util.h
++++ b/include/aotriton/util.h
+@@ -55,6 +55,7 @@ enum AOTRITON_API Gpu : uint64_t {
+   GPU_AMD_ARCH_GFX942_MOD0  = TRICAT(GpuVendor::kAMD,  0x942, 0),
+   GPU_AMD_ARCH_GFX942_MOD1  = TRICAT(GpuVendor::kAMD,  0x942, 1),
+   GPU_AMD_ARCH_GFX942_MOD2  = TRICAT(GpuVendor::kAMD,  0x942, 2),
++  GPU_AMD_ARCH_GFX1010_MOD0 = TRICAT(GpuVendor::kAMD, 0x1010, 0),
+   GPU_AMD_ARCH_GFX1100_MOD0 = TRICAT(GpuVendor::kAMD, 0x1100, 0),
+   GPU_AMD_ARCH_GFX1101_MOD0 = TRICAT(GpuVendor::kAMD, 0x1101, 0),
+   GPU_AMD_ARCH_GFX1151_MOD0 = TRICAT(GpuVendor::kAMD, 0x1151, 0),
+diff --git a/v3python/compile.py b/v3python/compile.py
+index aa35dd3..ac215a1 100644
+--- a/v3python/compile.py
++++ b/v3python/compile.py
+@@ -15,7 +15,7 @@ import json
+ from triton.backends.compiler import GPUTarget
+
+ KNOWN_TARGETS_64 = ['gfx90a', 'gfx942', 'gfx950']
+-KNOWN_TARGETS_32 = ['gfx1100', 'gfx1101', 'gfx1201', 'gfx1200', 'gfx1151', 'gfx1150', 'gfx1250']
++KNOWN_TARGETS_32 = ['gfx1010', 'gfx1100', 'gfx1101', 'gfx1201', 'gfx1200', 'gfx1151', 'gfx1150', 'gfx1250']
+
+ KNOWN_TARGETS = {
+   arch : GPUTarget('hip', arch, 64) for arch in KNOWN_TARGETS_64
+diff --git a/v3python/gpu_targets.py b/v3python/gpu_targets.py
+index 139e429..0f9dedd 100644
+--- a/v3python/gpu_targets.py
++++ b/v3python/gpu_targets.py
+@@ -8,6 +8,9 @@ AOTRITON_SUPPORTED_GPUS = (
+     'gfx942_mod0',
+     # 'gfx942_mod1',
+     # 'gfx942_mod2',
++    # Experimental RDNA1 target. Compile HSACO for gfx1010; only tuning
++    # parameters are reused from gfx1100 below.
++    'gfx1010_mod0',
+     'gfx950_mod0',
+     'gfx1100_mod0',
+     'gfx1151_mod0',
+@@ -20,6 +23,7 @@ AOTRITON_SUPPORTED_GPUS = (
+ # TODO: AOTRITON_TUNING_DATABASE_REUSE -> AOTRITON_TUNING_DATABASE_FALLBACK
+ # Load fallback entries first, and override with "patching" entries from real GPU
+ AOTRITON_TUNING_DATABASE_REUSE = {
++    'gfx1010_mod0' : 'gfx1100_mod0',
+     'gfx1200_mod0' : 'gfx1201_mod0',
+     'gfx1151_mod0' : 'gfx1100_mod0',
+     'gfx1150_mod0' : 'gfx1100_mod0',
+@@ -30,6 +34,7 @@ AOTRITON_ARCH_TO_PACK = {
+     'gfx90a'    : 'gfx90a',
+     'gfx942'    : 'gfx942',
+     'gfx950'    : 'gfx950',
++    'gfx1010'   : 'gfx1010',
+     'gfx1100'   : 'gfx11xx',
+     'gfx1101'   : 'gfx11xx',
+     'gfx1151'   : 'gfx11xx',
+@@ -47,6 +52,7 @@ AOTRITON_ARCH_WARPSIZE = {
+     'gfx90a'     : 64,
+     'gfx942'     : 64,
+     'gfx950'     : 64,
++    'gfx1010'    : 32,
+     'gfx1100'    : 32,
+     'gfx1151'    : 32,
+     'gfx1150'    : 32,
+@@ -59,6 +65,7 @@ AOTRITON_ARCH_PRODUCTION_LINE = {
+     'gfx90a'     : 'CDNA',
+     'gfx942'     : 'CDNA',
+     'gfx950'     : 'CDNA',
++    'gfx1010'    : 'RDNA',
+     'gfx1100'    : 'RDNA',
+     'gfx1151'    : 'RDNA',
+     'gfx1150'    : 'RDNA',
+diff --git a/v3src/util.cc b/v3src/util.cc
+index 5744567..e96cc0c 100644
+--- a/v3src/util.cc
++++ b/v3src/util.cc
+@@ -48,6 +48,7 @@ private:
+ std::unordered_map<std::string, GpuClassifier> LazyGpu::string_to_classifier = {
+   { "gfx90a", DummyClassifier<GPU_AMD_ARCH_GFX90A_MOD0 >() },
+   { "gfx942", DummyClassifier<GPU_AMD_ARCH_GFX942_MOD0 >() },
++  {"gfx1010", DummyClassifier<GPU_AMD_ARCH_GFX1010_MOD0>() },
+   {"gfx1100", DummyClassifier<GPU_AMD_ARCH_GFX1100_MOD0>() },
+   {"gfx1101", DummyClassifier<GPU_AMD_ARCH_GFX1101_MOD0>() },
+   { "gfx950", DummyClassifier<GPU_AMD_ARCH_GFX950_MOD0 >() },
+@@ -70,6 +71,7 @@ bool isArchExperimentallySupported(hipStream_t stream) {
+   auto gpu = getGpuFromStream(stream);
+   uint32_t vendor_arch = Gpu2VendorArch(gpu);
+   return (vendor_arch == CAT32(GpuVendor::kAMD, 0x1150) ||
++          vendor_arch == CAT32(GpuVendor::kAMD, 0x1010) ||
+           vendor_arch == CAT32(GpuVendor::kAMD, 0x1151) ||
+           vendor_arch == CAT32(GpuVendor::kAMD, 0x1101) ||
+           vendor_arch == CAT32(GpuVendor::kAMD, 0x1200) ||
