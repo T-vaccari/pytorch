@@ -40,6 +40,7 @@ from torch.utils._triton import (
     has_triton_experimental_host_tma,
     has_triton_package,
     has_triton_tensor_descriptor_host_tma,
+    triton_hash_with_backend,
 )
 
 
@@ -80,6 +81,11 @@ if HAS_GPU:
 
 
 class KernelTests(torch._inductor.test_case.TestCase):
+    @requires_gpu
+    def test_triton_key_compat(self):
+        self.assertTrue(has_triton_package())
+        self.assertTrue(triton_hash_with_backend())
+
     def _kernel_launched_in_code(self, kernel_name: str, code: str) -> bool:
         if inductor_config.cpp_wrapper:
             return f"launchKernel({kernel_name}" in code

@@ -78,7 +78,10 @@ def pre_fork_setup():
     # Computing the triton key can be slow. If we call it before fork,
     # it will be cached for the forked subprocesses.
     try:
-        from triton.compiler.compiler import triton_key
+        try:
+            from triton.runtime.cache import triton_key
+        except ImportError:
+            from triton.compiler.compiler import triton_key
 
         triton_key()
     except ImportError:

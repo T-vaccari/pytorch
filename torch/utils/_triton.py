@@ -6,7 +6,10 @@ from typing import Any
 @functools.cache
 def has_triton_package() -> bool:
     try:
-        from triton.compiler.compiler import triton_key
+        try:
+            from triton.runtime.cache import triton_key
+        except ImportError:
+            from triton.compiler.compiler import triton_key
 
         return triton_key is not None
     except ImportError:
@@ -160,7 +163,10 @@ def triton_backend() -> Any:
 
 @functools.cache
 def triton_hash_with_backend() -> str:
-    from triton.compiler.compiler import triton_key
+    try:
+        from triton.runtime.cache import triton_key
+    except ImportError:
+        from triton.compiler.compiler import triton_key
 
     backend = triton_backend()
     key = f"{triton_key()}-{backend.hash()}"
