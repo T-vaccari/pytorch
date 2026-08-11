@@ -3,6 +3,7 @@
 # flake8: noqa: E731
 # Skip do not assign a lambda expression, use a def
 import functools
+import inspect
 import logging
 
 import torch
@@ -85,6 +86,27 @@ class KernelTests(torch._inductor.test_case.TestCase):
     def test_triton_key_compat(self):
         self.assertTrue(has_triton_package())
         self.assertTrue(triton_hash_with_backend())
+
+    @requires_gpu
+    def test_generate_ttir_triton_3_5_astsource_signature(self):
+        from triton.compiler.compiler import ASTSource
+
+        if len(inspect.signature(ASTSource.make_ir).parameters) != 6:
+            self.skipTest("requires the Triton 3.5 ASTSource.make_ir signature")
+
+        x = torch.randn(4, device=GPU_TYPE)
+        ttir_module, _ = generate_ttir(
+            add_kernel,
+            {
+                "in_ptr0": x,
+                "in_ptr1": x,
+                "out_ptr": x,
+                "n_elements": x.numel(),
+                "BLOCK_SIZE": 4,
+            },
+            tma_descriptor_metadata={},
+        )
+        self.assertTrue(ttir_module.verify())
 
     def _kernel_launched_in_code(self, kernel_name: str, code: str) -> bool:
         if inductor_config.cpp_wrapper:

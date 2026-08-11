@@ -450,7 +450,7 @@ def generate_ttir(
 
     src = ASTSource(kernel, signature, constants, specialization)
 
-    # Triton changes ASTSource.make_ir to take 3/4 arguments. Handle
+    # Triton changes ASTSource.make_ir to take 2/3/4/5 arguments. Handle
     # backward compatibility here.
     make_ir_sig_params = len(inspect.signature(src.make_ir).parameters)
     get_codegen_implementation_sig_params = len(
@@ -461,6 +461,11 @@ def generate_ttir(
     elif make_ir_sig_params == 3:
         codegen_fns = backend.get_codegen_implementation()
         ttir_module = src.make_ir(options, codegen_fns, context)
+    elif make_ir_sig_params == 5:
+        codegen_args = [options] if get_codegen_implementation_sig_params == 1 else []
+        codegen_fns = backend.get_codegen_implementation(*codegen_args)
+        module_map = backend.get_module_map()
+        ttir_module = src.make_ir(target, options, codegen_fns, module_map, context)
     else:
         codegen_args = [options] if get_codegen_implementation_sig_params == 1 else []
         codegen_fns = backend.get_codegen_implementation(*codegen_args)
