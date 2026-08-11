@@ -202,12 +202,15 @@ class CacheBase:
     @functools.cache
     def get_system() -> dict[str, Any]:
         try:
-            from triton.compiler.compiler import triton_key
+            try:
+                from triton.runtime.cache import triton_key
+            except ImportError:
+                from triton.compiler.compiler import triton_key
 
             # Use triton_key instead of triton.__version__ as the version
             # is not updated with each code change
             triton_version = triton_key()
-        except ModuleNotFoundError:
+        except ImportError:
             triton_version = None
 
         try:
