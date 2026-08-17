@@ -7,7 +7,7 @@ This is an experimental PyTorch build for the AMD Radeon RX 5600 XT
 
 - Fork: `https://github.com/T-vaccari/pytorch`
 - Branch: `gfx1010-rocm`
-- Recorded head: `5257dd3a0980e3731c46848a233e7ce55a80ba66`
+- Recorded head: `c3dfaef65658ce29120b32fa53f8bcefb0d2dc64`
 - Upstream base: `ba56102387ef21a3b04b357e5b183d48f0afefc7` (PyTorch v2.8.0)
 - Kineto submodule: `https://github.com/T-vaccari/kineto.git`, revision
   `bc37fab44c422b9b2e6d8f91367e9fc7b353a393`
@@ -58,7 +58,8 @@ the active `ml` environment untouched: it only uses its build tools.
 ```bash
 MAX_JOBS=12 \
 PYTORCH_ROCM_ARCH=gfx1010 \
-AOTRITON_INSTALL_FROM_SOURCE=1 \
+USE_FLASH_ATTENTION=0 \
+USE_MEM_EFF_ATTENTION=0 \
 CMAKE_POLICY_VERSION_MINIMUM=3.5 \
 conda run -n ml python setup.py build
 ```
@@ -66,26 +67,17 @@ conda run -n ml python setup.py build
 `CMAKE_POLICY_VERSION_MINIMUM=3.5` is required with the recorded CMake 4.3.2,
 because an external dependency still declares compatibility with pre-3.5 CMake.
 
-`AOTRITON_INSTALL_FROM_SOURCE=1` is required on this host. The ROCm 7.0
-prebuilt AOTriton archive selected by the build failed its pinned SHA-256
-verification, so its binary must not be accepted or bypassed. The source path
-builds the AOTriton revision pinned by PyTorch and receives `gfx1010` from
-`PYTORCH_ROCM_ARCH`.
+The native AOTriton/Flash Attention experiment is not merged. Its gfx1010
+backward produced invalid gradients, so the reproducible branch explicitly
+disables both native optimized SDPA backends. Issue #3 tracks that separate
+research path. The validated training path is the external
+`T-vaccari/gfx1010-kernels` package, which keeps unsupported calls on the
+PyTorch math fallback.
 
-Flash Attention is an acceptance requirement for the final candidate. After a
-successful build, verify both that AOTriton produced `gfx1010` images and that
-PyTorch selects the Flash backend for causal FP16 SDPA with GPT-2 dimensions
-(`B >= 1`, `H=12`, `T=1024`, `D=64`). A library being present is not sufficient.
+## torch.compile compatibility
 
-## torch.compile dependency pin
-
-The currently installed `ml` environment has Triton 3.5.1, while this PyTorch
-source imports `triton.compiler.compiler.triton_key`, which is available in the
-PyTorch CI-pinned Triton 3.4.0 but absent from 3.5.1. A clean isolated test with
-Triton 3.4.0 compiled and ran a CUDA/HIP tensor function, including backward.
-
-The dependency pin was then validated in a clone of `ml`, not in the active
-environment:
+Triton 3.4.0 was the first isolated candidate that passed a CUDA/HIP
+`torch.compile` forward and backward smoke test:
 
 ```bash
 conda create -n ml-gfx1010-candidate --clone ml -y
@@ -93,27 +85,22 @@ conda run -n ml-gfx1010-candidate python -m pip install \\
   --no-deps --force-reinstall triton==3.4.0
 ```
 
-With that candidate, a `torch.compile` HIP smoke test consisting of matrix
-multiplication, LayerNorm, a scalar loss, and backward completed successfully.
-The same smoke test also passed when Triton 3.4.0 was supplied only through an
-isolated `PYTHONPATH` probe.
+The branch now also contains PR #6 and PR #7. They add the moved
+`triton.runtime.cache.triton_key` path and the Triton 3.5 `ASTSource.make_ir`
+signature while retaining compatibility with Triton 3.4. Targeted regression
+tests and an RX 5600 XT `torch.compile` GPU smoke test passed with Triton 3.5.
 
-Triton 3.5.1 is not a compatible replacement. Its `triton_key` symbol moved to
-`triton.runtime.cache`; restoring that symbol in memory gets past the original
-import error but compilation then fails with `TypeError: cannot pickle
-_thread.RLock object`. Do not paper over the import locally: pin 3.4.0 until
-the fork is upgraded and validated against the newer Triton ABI.
-
-Do not replace Triton in `ml` while validating builds. A final candidate
-environment must pin `triton==3.4.0` (or the exact commit in
-`.ci/docker/ci_commit_pins/triton.txt`) and re-run the compile smoke test.
+Do not replace Triton in `ml` while validating builds. Freeze the final Triton
+version in a new environment and rerun both the PyTorch compile smoke and the
+`gfx1010-kernels` correctness suite before promoting it.
 
 ## Reproduction status
 
 The source revision, submodule pin, toolchain, and CMake options above are
-recorded from the installed working build. A clean build from a new directory
-has **not yet been validated**. The original invocation was not retained, so
-do not claim a new build is equivalent until it passes the smoke test below.
+recorded from the installed working build and the merged source fixes. The
+existing wheel in `dist/` predates those fixes. A clean wheel from the recorded
+head has **not yet been validated**, so do not install that old artifact or
+claim a new build is equivalent until it passes the smoke tests below.
 
 Before starting a replacement build, record the exact environment and command:
 
