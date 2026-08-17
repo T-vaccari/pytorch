@@ -7,7 +7,7 @@
 
 ## `gfx1010` ROCm build
 
-The [`gfx1010-rocm`](https://github.com/T-vaccari/pytorch/tree/gfx1010-rocm) branch contains the source adaptations used by the custom local build. It is based on upstream PyTorch commit [`ba56102387ef21a3b04b357e5b183d48f0afefc7`](https://github.com/pytorch/pytorch/commit/ba56102387ef21a3b04b357e5b183d48f0afefc7) and pins the custom [Kineto fork](https://github.com/T-vaccari/kineto) as a submodule.
+The [`gfx1010-rocm`](https://github.com/T-vaccari/pytorch/tree/gfx1010-rocm) branch contains the source adaptations used by the custom local build. The validated release candidate is built from commit [`6b6c29a2e3581af06f0cdb29a09bfe27cdd3b29f`](https://github.com/T-vaccari/pytorch/commit/6b6c29a2e3581af06f0cdb29a09bfe27cdd3b29f), based on upstream PyTorch v2.8.0, and pins the custom [Kineto fork](https://github.com/T-vaccari/kineto) as a submodule.
 
 ### Verified working toolchain
 
@@ -16,23 +16,28 @@ The [`gfx1010-rocm`](https://github.com/T-vaccari/pytorch/tree/gfx1010-rocm) bra
 | GPU | AMD Radeon RX 5600 XT (`gfx1010`) |
 | Host OS | Ubuntu 22.04 |
 | ROCm/HIP runtime | 7.2.53211 |
-| PyTorch | `2.8.0a0+gitba56102` |
+| PyTorch | `2.8.0a0+git6b6c29a` |
+| Triton | 3.4.0 |
 | Python | 3.10.20 |
 | C++ compiler | GCC 11.4.0 (`/usr/bin/c++`) |
 | CMake | 4.3.2 |
 | Ninja | 1.13.0 |
 | Build type | Release |
-| PyTorch options | `USE_ROCM=ON`, `USE_CUDA=0` |
+| PyTorch options | `USE_ROCM=ON`, `USE_CUDA=0`, `USE_FLASH_ATTENTION=0`, `USE_MEM_EFF_ATTENTION=0` |
 
 ### Rebuild notes
 
 - Clone this branch with submodules and retain the custom Kineto submodule URL and pinned revision.
-- Build explicitly for `gfx1010` with a ROCm installation that supports it; do not assume a stock ROCm PyTorch wheel will support this GPU.
-- The source revision and toolchain above are the verified baseline. The original shell build invocation was not captured, so record the exact command and environment variables before producing a replacement build.
+- Build explicitly for `gfx1010` with ROCm 7.2.2; do not assume a stock ROCm PyTorch wheel will support this GPU.
+- Use separate source, build and release-candidate environments. Do not build in or replace the working `ml` environment.
+- The exact source revisions, build flags, artifact hashes, validation matrix and installation procedure are recorded in [`docs/gfx1010-build.md`](docs/gfx1010-build.md).
 
-### Known limitation
+### Runtime status
 
-On this configuration, GPU `torch.topk` can return corrupt values and indices. Details and the CPU-sampling workaround are tracked in [issue #1](https://github.com/T-vaccari/pytorch/issues/1).
+- The ROCm `topk` corruption for GPT-2-shaped tensors is fixed and regression-tested in this branch.
+- Native AOTriton and memory-efficient SDPA remain disabled because the tested gfx1010 backward produced invalid gradients.
+- The validated Flash Attention path is the separate [`T-vaccari/gfx1010-kernels`](https://github.com/T-vaccari/gfx1010-kernels) package. It patches public SDPA only inside the dedicated release-candidate environment and retains PyTorch math fallback for unsupported shapes.
+- GPU `abs()` on complex tensors currently fails during HIPRTC compilation; see the build record for the minimal reproducer and scope.
 
 PyTorch is a Python package that provides two high-level features:
 - Tensor computation (like NumPy) with strong GPU acceleration
