@@ -7,7 +7,7 @@ This is an experimental PyTorch build for the AMD Radeon RX 5600 XT
 
 - Fork: `https://github.com/T-vaccari/pytorch`
 - Branch: `gfx1010-rocm`
-- Recorded head: `4b4e8fa4c5d5fa939ac44794e2ec1c66afe60286`
+- Recorded head: `c3dfaef65658ce29120b32fa53f8bcefb0d2dc64`
 - Upstream base: `ba56102387ef21a3b04b357e5b183d48f0afefc7` (PyTorch v2.8.0)
 - Kineto submodule: `https://github.com/T-vaccari/kineto.git`, revision
   `bc37fab44c422b9b2e6d8f91367e9fc7b353a393`
@@ -18,7 +18,7 @@ Clone the fork, rather than upstream PyTorch, and initialize every submodule:
 git clone --branch gfx1010-rocm --recurse-submodules https://github.com/T-vaccari/pytorch.git
 cd pytorch
 git submodule sync --recursive
-git submodule update --init --recursive
+git -c submodule.fetchJobs=12 submodule update --init --recursive --jobs 12
 ```
 
 ## Recorded working configuration
@@ -50,12 +50,57 @@ The cache uses `/mnt/data/miniforge3`; on this host that is the canonical data
 path. Do not replace it blindly with a different Python prefix in an existing
 build directory. Configure a fresh build directory when reproducing the build.
 
+## Candidate build command
+
+Build in a fresh worktree or build directory. This command deliberately leaves
+the active `ml` environment untouched: it only uses its build tools.
+
+```bash
+MAX_JOBS=12 \
+PYTORCH_ROCM_ARCH=gfx1010 \
+USE_FLASH_ATTENTION=0 \
+USE_MEM_EFF_ATTENTION=0 \
+CMAKE_POLICY_VERSION_MINIMUM=3.5 \
+conda run -n ml python setup.py build
+```
+
+`CMAKE_POLICY_VERSION_MINIMUM=3.5` is required with the recorded CMake 4.3.2,
+because an external dependency still declares compatibility with pre-3.5 CMake.
+
+The native AOTriton/Flash Attention experiment is not merged. Its gfx1010
+backward produced invalid gradients, so the reproducible branch explicitly
+disables both native optimized SDPA backends. Issue #3 tracks that separate
+research path. The validated training path is the external
+`T-vaccari/gfx1010-kernels` package, which keeps unsupported calls on the
+PyTorch math fallback.
+
+## torch.compile compatibility
+
+Triton 3.4.0 was the first isolated candidate that passed a CUDA/HIP
+`torch.compile` forward and backward smoke test:
+
+```bash
+conda create -n ml-gfx1010-candidate --clone ml -y
+conda run -n ml-gfx1010-candidate python -m pip install \\
+  --no-deps --force-reinstall triton==3.4.0
+```
+
+The branch now also contains PR #6 and PR #7. They add the moved
+`triton.runtime.cache.triton_key` path and the Triton 3.5 `ASTSource.make_ir`
+signature while retaining compatibility with Triton 3.4. Targeted regression
+tests and an RX 5600 XT `torch.compile` GPU smoke test passed with Triton 3.5.
+
+Do not replace Triton in `ml` while validating builds. Freeze the final Triton
+version in a new environment and rerun both the PyTorch compile smoke and the
+`gfx1010-kernels` correctness suite before promoting it.
+
 ## Reproduction status
 
 The source revision, submodule pin, toolchain, and CMake options above are
-recorded from the installed working build. A clean build from a new directory
-has **not yet been validated**. The original invocation was not retained, so
-do not claim a new build is equivalent until it passes the smoke test below.
+recorded from the installed working build and the merged source fixes. The
+existing wheel in `dist/` predates those fixes. A clean wheel from the recorded
+head has **not yet been validated**, so do not install that old artifact or
+claim a new build is equivalent until it passes the smoke tests below.
 
 Before starting a replacement build, record the exact environment and command:
 
@@ -72,13 +117,12 @@ environment:
 python -c 'import torch; print(torch.__version__); print(torch.version.hip); print(torch.cuda.get_device_name(0))'
 ```
 
-## Known functional limitation
+## Validated ROCm topk fix
 
-HIP `torch.topk` is corrupted for a `(B, 50257)` tensor when `B >= 2` on this
-build. The failure is isolated to the multi-block selection path; `softmax` and
-GPU `torch.sort` are correct for the same input. Details, a minimal reproducer,
-and the safe CPU sampling workaround are tracked in issue #1.
+The ROCm multi-block `topk` path corrupted values for a `(B, 50257)` tensor
+when `B >= 2`. Commit `3a887fc9d0c` disables only that ROCm multi-block path;
+the standard path remains available. The regression test covers batches 2 and
+5 against a CPU reference, and manual HIP checks matched values and indices.
 
-Do not use GPU `topk` or `multinomial` for GPT-2 generation until a candidate
-fix is validated in a separate build directory. Training forward/backward does
-not use this sampling path.
+The fix is merged in this branch. It is not present in an older installed
+PyTorch build until a newly validated candidate is installed.
